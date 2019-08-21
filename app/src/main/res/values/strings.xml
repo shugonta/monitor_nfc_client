@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">MonitorNFC</string>
+    <string name="connect">Connect</string>
+    <string name="connected">Connected</string>
 </resources>
