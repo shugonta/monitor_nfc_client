@@ -3,5 +3,9 @@
     <string name="connect">Connect</string>
     <string name="connecting">Connecting</string>
     <string name="disconnect">Disconnect</string>
+    <string name="monitoring_stop_jp">監視停止中</string>
+    <string name="id_detected_jp">社員証検出</string>
+    <string name="id_not_detected_jp">社員証未検出</string>
+
     <string name="ble_not_supported">BLE is not supported.</string>
 </resources>

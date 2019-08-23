@@ -2,8 +2,6 @@ package local.sekigawa.monitornfc
 
 import android.Manifest;
 import androidx.appcompat.app.AppCompatActivity
-import android.os.Bundle
-import android.os.Build;
 import android.widget.Button
 import android.widget.Toast;
 import android.Manifest.permission
@@ -20,16 +18,21 @@ import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult;
+import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
-import android.os.Handler
+import android.os.*
 import android.util.Log
+import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import androidx.core.content.PermissionChecker
 import java.util.*
+import kotlin.collections.ArrayList
+import local.sekigawa.monitornfc.BLEFrame
 
 
 class MainActivity : AppCompatActivity() {
@@ -82,7 +85,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * BLEの初期設定をおこなうところ
+     * BLEの初期設定
      */
     private fun InitializeBleSetting() {
         //bluetoothがONになっているか確認
@@ -109,7 +112,6 @@ class MainActivity : AppCompatActivity() {
 
 
     /**
-     * Permisstionの許可をする関数
      */
     private fun requestLocatePermission() {
         if (ActivityCompat.shouldShowRequestPermissionRationale(
@@ -145,7 +147,14 @@ class MainActivity : AppCompatActivity() {
      */
     private fun ConnectBleDevice() {
         val scanner = mBluetoothAdapter?.getBluetoothLeScanner()
-        scanner?.startScan(mScanCallback)
+        val scanFilter =
+            ScanFilter.Builder().setServiceUuid(ParcelUuid.fromString(CUSTOM_SERVICE_UUID)).build();
+        val scanFilterList = ArrayList<ScanFilter>();
+        scanFilterList.add(scanFilter);
+        val scanSettings =
+            ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_BALANCED).build();
+
+        scanner?.startScan(scanFilterList, scanSettings, mScanCallback)
     }
 
     /**
@@ -266,10 +275,18 @@ class MainActivity : AppCompatActivity() {
             //回避:android.view.ViewRootImpl$CalledFromWrongThreadException: Only the original thread that created a view hierarchy can touch its views.
             handler.post(Runnable {
                 val RecvByteValue = characteristic.value
-                val RecvByteValueStr = RecvByteValue.toHexString()
 
-                Toast.makeText(this@MainActivity, RecvByteValueStr, Toast.LENGTH_SHORT)
+                val ble_status = BLEFrame(RecvByteValue[0].toInt())
+
+                Toast.makeText(this@MainActivity, ble_status.toString(), Toast.LENGTH_SHORT)
                     .show();
+                val status_txt = findViewById<Button>(R.id.status_txt) as TextView
+                if (BLEFrame.ID_DETECTED in ble_status) {
+                    status_txt.setText(R.string.id_detected_jp)
+//                    vibrate();
+                } else {
+                    status_txt.setText(R.string.id_not_detected_jp)
+                }
             })
         }
     }
@@ -278,12 +295,21 @@ class MainActivity : AppCompatActivity() {
         val connect_btn = findViewById<Button>(R.id.connect_btn) as Button
         connect_btn.isEnabled = true
         connect_btn.setText(R.string.disconnect)
+        val status_txt = findViewById<Button>(R.id.status_txt) as TextView
+        status_txt.setText(R.string.id_not_detected_jp)
     }
 
     private fun disconnected() {
         val connect_btn = findViewById<Button>(R.id.connect_btn) as Button
         connect_btn.isEnabled = true
         connect_btn.setText(R.string.connect)
+        val status_txt = findViewById<Button>(R.id.status_txt) as TextView
+        status_txt.setText(R.string.monitoring_stop_jp)
+    }
+
+    private fun vibrate() {
+        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        vibrator.vibrate(1000)
     }
 
     fun ByteArray.toHexString(): String {
