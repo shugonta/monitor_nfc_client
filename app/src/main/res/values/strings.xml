@@ -1,5 +1,7 @@
 <resources>
     <string name="app_name">MonitorNFC</string>
     <string name="connect">Connect</string>
-    <string name="connected">Connected</string>
+    <string name="connecting">Connecting</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="ble_not_supported">BLE is not supported.</string>
 </resources>
