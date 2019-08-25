@@ -8,6 +8,7 @@ class BLEFrame constructor(
         val MONITORING = BLEFrame(0b0001)
         val CARD_DETECTED = BLEFrame(0b0010)
         val ID_DETECTED = BLEFrame(0b0100)
+        val SSID_DETECTED = BLEFrame(0b1000)
     }
 
     operator fun plus(bLEFrame: BLEFrame): BLEFrame =

@@ -2,8 +2,6 @@ package local.sekigawa.monitornfc
 
 import android.Manifest;
 import androidx.appcompat.app.AppCompatActivity
-import android.widget.Button
-import android.widget.Toast;
 import android.Manifest.permission
 import android.Manifest.permission.ACCESS_COARSE_LOCATION
 import android.content.pm.PackageManager
@@ -24,12 +22,17 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.*
 import android.util.Log
-import android.widget.TextView
+import android.view.View
+import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import androidx.core.content.PermissionChecker
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import kotlinx.android.synthetic.main.activity_main.*
 import java.util.*
 import kotlin.collections.ArrayList
 import local.sekigawa.monitornfc.BLEFrame
@@ -47,14 +50,19 @@ class MainActivity : AppCompatActivity() {
     //UUID
     private val CUSTOM_SERVICE_UUID = "54c3259f-a142-4711-bbca-2efba019868e"
     private val CUSTOM_CHARACTERSTIC_UUID = "5170e77f-4076-40b7-9a87-15fbe60e816d"
+    private val SSID_CHARACTERSTIC_UUID = "5f9207af-19d1-4151-a075-eb8d24db496f"
 
     //BLE
     private var mBluetoothAdapter: BluetoothAdapter? = null
     private var mBleGatt: BluetoothGatt? = null
+    private var mBleGattQueue: BluetoothGattQueue? = null
     private var mBluetoothGattCharacteristic: BluetoothGattCharacteristic? = null
+    private var mBluetoothGattSSIDCharacteristic: BluetoothGattCharacteristic? = null
 
     //Androidの固定値
     private val ANDROID_CENTRAL_UUID = "00002902-0000-1000-8000-00805f9b34fb"
+
+    private var SSID_LIST: ArrayList<String>? = null
 
     val handler = Handler()
 
@@ -81,6 +89,58 @@ class MainActivity : AppCompatActivity() {
                 connect_btn.isEnabled = false
                 ConnectBleDevice()
             }
+        }
+
+
+        val gson = Gson();
+        val sharedPreferences = getSharedPreferences("ssid", Context.MODE_PRIVATE)
+        val ssidList = gson.fromJson<ArrayList<String>>(
+            sharedPreferences.getString("ssid_list", "[]"),
+            object : TypeToken<ArrayList<String>>() {}.type
+        )
+        this.SSID_LIST = ArrayList(ssidList)
+
+        val ssid_btn = findViewById<Button>(R.id.ssid_btn)
+        ssidList.add(0, "新規登録")
+
+        val adapter: ArrayAdapter<String> = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            ssidList
+        )
+
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+
+        val spinner_ssid = findViewById<Spinner>(R.id.spinner_ssid)
+        spinner_ssid.isEnabled = false
+        spinner_ssid.adapter = adapter
+        spinner_ssid.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
+                val spinnerParent = parent as Spinner
+                val item = spinnerParent.selectedItem as String
+                if (item == "新規登録" && spinnerParent.selectedItemId == 0L) {
+                    ssid_btn.setText(R.string.add)
+                } else {
+                    ssid_btn.setText(R.string.del)
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {
+                ssid_btn.setText(R.string.add)
+            }
+        }
+    }
+
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (mBleGatt != null) {
+            mBleGatt?.disconnect()
         }
     }
 
@@ -161,10 +221,7 @@ class MainActivity : AppCompatActivity() {
      * DisConncetDevice
      */
     private fun DisConnectDevice() {
-        mBleGatt?.close()
-        mBleGatt = null
-        Toast.makeText(this, "切断", Toast.LENGTH_SHORT).show()
-        disconnected()
+        mBleGatt?.disconnect()
     }
 
 
@@ -213,7 +270,6 @@ class MainActivity : AppCompatActivity() {
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) { //マイコンの応答がなくなった時の処理
                 mBleGatt?.close()
                 mBleGatt = null
-
                 handler.post(Runnable {
                     Toast.makeText(
                         this@MainActivity,
@@ -233,8 +289,10 @@ class MainActivity : AppCompatActivity() {
 
                 if (service != null) {
                     mBleGatt = gatt
+                    if (mBleGatt != null) {
+                        mBleGattQueue = BluetoothGattQueue(mBleGatt!!)
+                    }
 
-                    //Notifyの接続を試みてる
                     mBluetoothGattCharacteristic =
                         service.getCharacteristic(UUID.fromString(CUSTOM_CHARACTERSTIC_UUID))
                     if (mBluetoothGattCharacteristic != null) {
@@ -244,7 +302,8 @@ class MainActivity : AppCompatActivity() {
                             UUID.fromString(ANDROID_CENTRAL_UUID)
                         )
                         descriptor?.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                        mBleGatt?.writeDescriptor(descriptor)
+//                        mBleGatt?.writeDescriptor(descriptor)
+                        mBleGattQueue?.push("writeDescriptor", descriptor!!)
 
                         if (registered) {
                             Log.e("INFO", "notify ok")
@@ -261,7 +320,61 @@ class MainActivity : AppCompatActivity() {
                             DisConnectDevice()
                         }
                     }
+                    mBluetoothGattSSIDCharacteristic =
+                        service.getCharacteristic(UUID.fromString(SSID_CHARACTERSTIC_UUID))
+
+                    if (mBluetoothGattSSIDCharacteristic != null) {
+                        mBleGattQueue?.push(
+                            "readCharacteristic",
+                            mBluetoothGattSSIDCharacteristic!!
+                        )
+//                        val readres = mBleGatt?.readCharacteristic(mBluetoothGattSSIDCharacteristic)
+//                        Log.e("INFO", readres.toString())
+
+                    }
                 }
+            }
+        }
+
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt?,
+            characteristic: BluetoothGattCharacteristic?,
+            status: Int
+        ) {
+            super.onCharacteristicRead(gatt, characteristic, status)
+            mBleGattQueue?.pop()
+            if (characteristic != null &&
+                characteristic.uuid == UUID.fromString(SSID_CHARACTERSTIC_UUID)
+            ) {
+                val ssid_list_size =
+                    characteristic.getIntValue(BluetoothGattCharacteristic.FORMAT_UINT8, 0)
+                if (SSID_LIST != null && ssid_list_size != SSID_LIST?.size) {
+                    //SSIDリスト不整合
+                    val ssid_list_str = SSID_LIST?.joinToString(separator = ",")
+                    mBluetoothGattSSIDCharacteristic?.setValue(
+                        ssid_list_str
+                    )
+//                        mBluetoothGattSSIDCharacteristic?.setValue(
+//                            -1,
+//                            BluetoothGattCharacteristic.FORMAT_SINT8,
+//                            0
+//                        )
+                    val res = mBleGatt?.writeCharacteristic(characteristic)
+                    Log.e("INFO", res.toString())
+                }
+
+            }
+        }
+
+        override fun onDescriptorWrite(
+            gatt: BluetoothGatt?,
+            descriptor: BluetoothGattDescriptor?,
+            status: Int
+        ) {
+            super.onDescriptorWrite(gatt, descriptor, status)
+            mBleGattQueue?.pop()
+            if (descriptor != null && descriptor.uuid == UUID.fromString(ANDROID_CENTRAL_UUID)) {
+                Log.e("INFO", "Notification Enabled")
             }
         }
 
@@ -286,6 +399,13 @@ class MainActivity : AppCompatActivity() {
 //                    vibrate();
                 } else {
                     status_txt.setText(R.string.id_not_detected_jp)
+                }
+
+                val wifi_txt = findViewById<Button>(R.id.wifi_txt) as TextView
+                if (BLEFrame.SSID_DETECTED in ble_status) {
+                    wifi_txt.setText(R.string.wifi_found)
+                } else {
+                    wifi_txt.setText(R.string.wifi_not_found)
                 }
             })
         }

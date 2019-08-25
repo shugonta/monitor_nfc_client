@@ -1,11 +1,16 @@
 <resources>
     <string name="app_name">MonitorNFC</string>
-    <string name="connect">Connect</string>
-    <string name="connecting">Connecting</string>
-    <string name="disconnect">Disconnect</string>
+    <string name="connect">接続</string>
+    <string name="connecting">接続中</string>
+    <string name="disconnect">切断</string>
     <string name="monitoring_stop_jp">監視停止中</string>
-    <string name="id_detected_jp">社員証検出</string>
+    <string name="id_detected_jp">社員証検出中</string>
     <string name="id_not_detected_jp">社員証未検出</string>
+    <string name="wifi_not_found">通知停止SSID未検出</string>
+    <string name="wifi_found">通知停止SSID検出中</string>
+    <string name="add">追加</string>
+    <string name="del">削除</string>
+    <string name="ssid_list">監視対象外SSIDリスト</string>
 
     <string name="ble_not_supported">BLE is not supported.</string>
 </resources>
