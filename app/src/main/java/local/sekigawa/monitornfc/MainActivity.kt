@@ -24,6 +24,8 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.*
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.Log
 import android.view.View
 import android.widget.*
@@ -36,7 +38,7 @@ import kotlinx.android.synthetic.main.activity_main.*
 import java.util.*
 import kotlin.collections.ArrayList
 import local.sekigawa.monitornfc.BLEFrame
-
+import java.text.SimpleDateFormat
 
 class MainActivity : AppCompatActivity() {
     val connected: Boolean = false
@@ -63,6 +65,18 @@ class MainActivity : AppCompatActivity() {
     private val ANDROID_CENTRAL_UUID = "00002902-0000-1000-8000-00805f9b34fb"
 
     private var SSID_LIST: ArrayList<String>? = null
+    private var spinner_adapter: ArrayAdapter<String>? = null
+
+    private var inc_date_chklist: Map<String, CheckBox>? = null
+    private var exc_date_chklist: Map<String, CheckBox>? = null
+    private var incDate: ArrayList<String>? = null
+    private var incStartTime: Date? = null
+    private var incEndTime: Date? = null
+    private var excDate: ArrayList<String>? = null
+    private var excStartTime: Date? = null
+    private var excEndTime: Date? = null
+
+    private var vibrator: Vibrator? = null
 
     val handler = Handler()
 
@@ -93,7 +107,7 @@ class MainActivity : AppCompatActivity() {
 
 
         val gson = Gson();
-        val sharedPreferences = getSharedPreferences("ssid", Context.MODE_PRIVATE)
+        val sharedPreferences = getSharedPreferences("monitor_nfc", Context.MODE_PRIVATE)
         val ssidList = gson.fromJson<ArrayList<String>>(
             sharedPreferences.getString("ssid_list", "[]"),
             object : TypeToken<ArrayList<String>>() {}.type
@@ -101,19 +115,58 @@ class MainActivity : AppCompatActivity() {
         this.SSID_LIST = ArrayList(ssidList)
 
         val ssid_btn = findViewById<Button>(R.id.ssid_btn)
+        ssid_btn.setOnClickListener {
+            if (ssid_btn.text != null && ssid_btn.text == getString(R.string.add)) {
+                val editText = EditText(this);
+                AlertDialog.Builder(this)
+                    .setTitle("SSID名")
+                    .setView(editText)
+                    .setPositiveButton("OK") { dialog, which ->
+                        val target_ssid = editText.text.toString()
+                        SSID_LIST?.add(target_ssid)
+                        spinner_adapter?.add(target_ssid)
+                        if (mBleGattQueue != null) {
+                            val pref = getSharedPreferences("monitor_nfc", Context.MODE_PRIVATE)
+                            pref.edit().putString("ssid_list", Gson().toJson(SSID_LIST!!)).apply()
+                            //不整合確認後にwriteされるはず
+                            mBleGattQueue?.push(
+                                "readCharacteristic", mBluetoothGattSSIDCharacteristic!!
+                            )
+                        }
+                    }.show();
+            } else {
+                val target_ssid = spinner_ssid.selectedItem.toString()
+                AlertDialog.Builder(this)
+                    .setTitle("SSID削除")
+                    .setMessage(target_ssid + "を削除します")
+                    .setPositiveButton("OK") { dialog, which ->
+                        SSID_LIST?.remove(target_ssid)
+                        spinner_adapter?.remove(target_ssid)
+                        if (mBleGattQueue != null) {
+                            val pref = getSharedPreferences("monitor_nfc", Context.MODE_PRIVATE)
+                            pref.edit().putString("ssid_list", Gson().toJson(SSID_LIST!!)).apply()
+                            //不整合確認後にwriteされるはず
+                            mBleGattQueue?.push(
+                                "readCharacteristic", mBluetoothGattSSIDCharacteristic!!
+                            )
+                        }
+                    }.show();
+            }
+        }
+
         ssidList.add(0, "新規登録")
 
-        val adapter: ArrayAdapter<String> = ArrayAdapter(
+        spinner_adapter = ArrayAdapter(
             this,
             android.R.layout.simple_spinner_item,
             ssidList
         )
 
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinner_adapter?.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
 
         val spinner_ssid = findViewById<Spinner>(R.id.spinner_ssid)
         spinner_ssid.isEnabled = false
-        spinner_ssid.adapter = adapter
+        spinner_ssid.adapter = spinner_adapter
         spinner_ssid.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(
                 parent: AdapterView<*>?,
@@ -134,8 +187,171 @@ class MainActivity : AppCompatActivity() {
                 ssid_btn.setText(R.string.add)
             }
         }
+
+
+        //監視時間周り
+        inc_date_chklist = mapOf(
+            "sun" to (findViewById<CheckBox>(R.id.incdate_chk_sun)),
+            "mon" to (findViewById<CheckBox>(R.id.incdate_chk_mon)),
+            "tue" to (findViewById<CheckBox>(R.id.incdate_chk_tue)),
+            "wed" to (findViewById<CheckBox>(R.id.incdate_chk_wed)),
+            "thu" to (findViewById<CheckBox>(R.id.incdate_chk_thu)),
+            "fri" to (findViewById<CheckBox>(R.id.incdate_chk_fri)),
+            "sat" to (findViewById<CheckBox>(R.id.incdate_chk_sat))
+        )
+
+        exc_date_chklist = mapOf(
+            "sun" to (findViewById<CheckBox>(R.id.excdate_chk_sun)),
+            "mon" to (findViewById<CheckBox>(R.id.excdate_chk_mon)),
+            "tue" to (findViewById<CheckBox>(R.id.excdate_chk_tue)),
+            "wed" to (findViewById<CheckBox>(R.id.excdate_chk_wed)),
+            "thu" to (findViewById<CheckBox>(R.id.excdate_chk_thu)),
+            "fri" to (findViewById<CheckBox>(R.id.excdate_chk_fri)),
+            "sat" to (findViewById<CheckBox>(R.id.excdate_chk_sat))
+        )
+
+        val inc_date = gson.fromJson<ArrayList<String>>(
+            sharedPreferences.getString("inc_date", "['mon','tue','wed','thu','fri']"),
+            object : TypeToken<ArrayList<String>>() {}.type
+        )
+        val inc_start_time = sharedPreferences.getString("inc_start_time", "00:00")
+        val inc_end_time = sharedPreferences.getString("inc_end_time", "23:59")
+
+        val exc_date = gson.fromJson<ArrayList<String>>(
+            sharedPreferences.getString("exc_date", "['sun','sat']"),
+            object : TypeToken<ArrayList<String>>() {}.type
+        )
+        val exc_start_time = sharedPreferences.getString("exc_start_time", "0:00")
+        val exc_end_time = sharedPreferences.getString("exc_end_time", "23:59")
+
+        //コントロール設定
+        inc_date.forEach {
+            inc_date_chklist!![it]?.isChecked = true
+        }
+        exc_date.forEach {
+            exc_date_chklist!![it]?.isChecked = true
+        }
+
+        //時刻反映
+        val formatter = SimpleDateFormat("H:mm", Locale.JAPAN)
+
+        val inc_start_txt = findViewById<EditText>(R.id.incdate_start_txt)
+        val inc_end_txt = findViewById<EditText>(R.id.incdate_end_txt)
+
+        val inc_start_date = formatter.parse(inc_start_time!!)
+        val inc_end_date = formatter.parse(inc_end_time!!)
+        inc_start_txt.setText(formatter.format(inc_start_date!!), TextView.BufferType.NORMAL)
+        inc_end_txt.setText(formatter.format(inc_end_date!!), TextView.BufferType.NORMAL)
+
+        val exc_start_txt = findViewById<EditText>(R.id.excdate_start_txt)
+        val exc_end_txt = findViewById<EditText>(R.id.excdate_end_txt)
+
+        val exc_start_date = formatter.parse(exc_start_time!!)
+        val exc_end_date = formatter.parse(exc_end_time!!)
+        exc_start_txt.setText(formatter.format(exc_start_date!!), TextView.BufferType.NORMAL)
+        exc_end_txt.setText(formatter.format(exc_end_date!!), TextView.BufferType.NORMAL)
+
+
+        val settime_btn = findViewById<Button>(R.id.settime_btn)
+        if (setTime())
+            settime_btn.isEnabled = false
+
+        //イベントハンドラ設定
+        settime_btn.setOnClickListener() {
+            if (setTime())
+                settime_btn.isEnabled = false
+        }
+
+        val textWatcher = object : TextWatcher {
+            override fun afterTextChanged(p0: Editable?) {
+                findViewById<Button>(R.id.settime_btn).isEnabled = true
+            }
+
+            override fun beforeTextChanged(p0: CharSequence?, p1: Int, p2: Int, p3: Int) {
+            }
+
+            override fun onTextChanged(p0: CharSequence?, p1: Int, p2: Int, p3: Int) {
+            }
+        }
+
+        val chkboxClickListener = object : View.OnClickListener {
+            override fun onClick(p0: View?) {
+                findViewById<Button>(R.id.settime_btn).isEnabled = true
+            }
+        }
+
+        inc_start_txt.addTextChangedListener(textWatcher)
+        inc_end_txt.addTextChangedListener(textWatcher)
+        exc_start_txt.addTextChangedListener(textWatcher)
+        exc_end_txt.addTextChangedListener(textWatcher)
+
+        inc_date_chklist!!.forEach { (k, v) ->
+            v.setOnClickListener(chkboxClickListener)
+        }
+        exc_date_chklist!!.forEach { (k, v) ->
+            v.setOnClickListener(chkboxClickListener)
+        }
+
+        vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
     }
 
+    fun setTime(): Boolean {
+        val formatter = SimpleDateFormat("H:mm", Locale.JAPAN)
+
+        val inc_start_txt = findViewById<EditText>(R.id.incdate_start_txt)
+        val inc_end_txt = findViewById<EditText>(R.id.incdate_end_txt)
+        this.incDate = ArrayList<String>()
+
+        try {
+            this.incStartTime = formatter.parse(inc_start_txt.text.toString())
+            this.incEndTime = formatter.parse(inc_end_txt.text.toString())
+        } catch (t: Throwable) {
+            return false
+        }
+        inc_start_txt.setText(formatter.format(this.incStartTime!!), TextView.BufferType.NORMAL)
+        inc_end_txt.setText(formatter.format(this.incEndTime!!), TextView.BufferType.NORMAL)
+
+        if (inc_date_chklist != null) {
+            inc_date_chklist!!.forEach { (k, v) ->
+                if (v.isChecked) {
+                    incDate!!.add(k)
+                }
+            }
+        }
+
+        val exc_start_txt = findViewById<EditText>(R.id.excdate_start_txt)
+        val exc_end_txt = findViewById<EditText>(R.id.excdate_end_txt)
+        this.excDate = ArrayList<String>()
+
+        try {
+            this.excStartTime = formatter.parse(exc_start_txt.text.toString())
+            this.excEndTime = formatter.parse(exc_end_txt.text.toString())
+        } catch (t: Throwable) {
+            return false
+        }
+        exc_start_txt.setText(formatter.format(this.excStartTime!!), TextView.BufferType.NORMAL)
+        exc_end_txt.setText(formatter.format(this.excEndTime!!), TextView.BufferType.NORMAL)
+
+
+        if (exc_date_chklist != null) {
+            exc_date_chklist!!.forEach { (k, v) ->
+                if (v.isChecked) {
+                    excDate!!.add(k)
+                }
+            }
+        }
+
+        //保存
+        val pref = getSharedPreferences("monitor_nfc", Context.MODE_PRIVATE)
+        pref.edit().putString("inc_start_time", formatter.format(this.incStartTime!!)).apply()
+        pref.edit().putString("inc_end_time", formatter.format(this.incEndTime!!)).apply()
+        pref.edit().putString("inc_date", Gson().toJson(this.incDate!!)).apply()
+        pref.edit().putString("exc_start_time", formatter.format(this.excStartTime!!)).apply()
+        pref.edit().putString("exc_end_time", formatter.format(this.excEndTime!!)).apply()
+        pref.edit().putString("exc_date", Gson().toJson(this.excDate!!)).apply()
+
+        return true
+    }
 
     override fun onDestroy() {
         super.onDestroy()
@@ -159,7 +375,7 @@ class MainActivity : AppCompatActivity() {
             startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
         }
 
-        //permisstion
+        //permission
         if (PermissionChecker.checkSelfPermission(
                 this@MainActivity,
                 Manifest.permission.ACCESS_FINE_LOCATION
@@ -186,7 +402,8 @@ class MainActivity : AppCompatActivity() {
                     android.R.string.ok,
                     DialogInterface.OnClickListener() { _, _ ->
                         ActivityCompat.requestPermissions(
-                            this@MainActivity, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                            this@MainActivity,
+                            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
                             REQUEST_CODE_LOCATE_PERMISSION
                         )
                     })
@@ -208,7 +425,8 @@ class MainActivity : AppCompatActivity() {
     private fun ConnectBleDevice() {
         val scanner = mBluetoothAdapter?.getBluetoothLeScanner()
         val scanFilter =
-            ScanFilter.Builder().setServiceUuid(ParcelUuid.fromString(CUSTOM_SERVICE_UUID)).build();
+            ScanFilter.Builder().setServiceUuid(ParcelUuid.fromString(CUSTOM_SERVICE_UUID))
+                .build();
         val scanFilterList = ArrayList<ScanFilter>();
         scanFilterList.add(scanFilter);
         val scanSettings =
@@ -297,7 +515,10 @@ class MainActivity : AppCompatActivity() {
                         service.getCharacteristic(UUID.fromString(CUSTOM_CHARACTERSTIC_UUID))
                     if (mBluetoothGattCharacteristic != null) {
                         val registered =
-                            gatt.setCharacteristicNotification(mBluetoothGattCharacteristic, true)
+                            gatt.setCharacteristicNotification(
+                                mBluetoothGattCharacteristic,
+                                true
+                            )
                         val descriptor = mBluetoothGattCharacteristic?.getDescriptor(
                             UUID.fromString(ANDROID_CENTRAL_UUID)
                         )
@@ -359,11 +580,32 @@ class MainActivity : AppCompatActivity() {
 //                            BluetoothGattCharacteristic.FORMAT_SINT8,
 //                            0
 //                        )
-                    val res = mBleGatt?.writeCharacteristic(characteristic)
-                    Log.e("INFO", res.toString())
+                    if (mBleGattQueue != null) {
+                        mBleGattQueue?.push("writeCharacteristic", characteristic)
+//                        val res = mBleGatt?.writeCharacteristic(characteristic)
+//                        Log.e("INFO", res.toString())
+                    }
                 }
-
             }
+        }
+
+        override fun onCharacteristicWrite(
+            gatt: BluetoothGatt?,
+            characteristic: BluetoothGattCharacteristic?,
+            status: Int
+        ) {
+            super.onCharacteristicWrite(gatt, characteristic, status)
+            mBleGattQueue?.pop()
+
+        }
+
+        override fun onDescriptorRead(
+            gatt: BluetoothGatt?,
+            descriptor: BluetoothGattDescriptor?,
+            status: Int
+        ) {
+            super.onDescriptorRead(gatt, descriptor, status)
+            mBleGattQueue?.pop()
         }
 
         override fun onDescriptorWrite(
@@ -396,7 +638,6 @@ class MainActivity : AppCompatActivity() {
                 val status_txt = findViewById<Button>(R.id.status_txt) as TextView
                 if (BLEFrame.ID_DETECTED in ble_status) {
                     status_txt.setText(R.string.id_detected_jp)
-//                    vibrate();
                 } else {
                     status_txt.setText(R.string.id_not_detected_jp)
                 }
@@ -407,16 +648,52 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     wifi_txt.setText(R.string.wifi_not_found)
                 }
+
+                //判定時間確認
+                val curdate = Date(System.currentTimeMillis());
+                val formatter = SimpleDateFormat("H:mm", Locale.JAPAN)
+                val curtime = formatter.parse(formatter.format(curdate.time))
+                if (curtime != null && incStartTime != null && incEndTime != null) {
+                    if (incStartTime!!.time <= curtime.time && incEndTime!!.time >= curtime.time) {
+                        val ble = BLEFrame.ID_DETECTED !in ble_status
+                        val ssid = BLEFrame.SSID_DETECTED !in ble_status
+                        if (BLEFrame.ID_DETECTED !in ble_status && BLEFrame.SSID_DETECTED !in ble_status) {
+                            vibrator!!.vibrate(longArrayOf(500, 1000), 0)
+                        }
+                        handler.post(Runnable {
+                            Toast.makeText(
+                                this@MainActivity,
+                                "監視時間内",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        })
+                    } else {
+                        handler.post(Runnable {
+                            Toast.makeText(
+                                this@MainActivity,
+                                "監視時間外",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        })
+                        if (vibrator != null) {
+                            vibrator!!.cancel()
+                        }
+                    }
+                }
             })
         }
     }
 
     private fun connected() {
-        val connect_btn = findViewById<Button>(R.id.connect_btn) as Button
+        val connect_btn = findViewById<Button>(R.id.connect_btn)
         connect_btn.isEnabled = true
         connect_btn.setText(R.string.disconnect)
-        val status_txt = findViewById<Button>(R.id.status_txt) as TextView
+        val status_txt = findViewById<TextView>(R.id.status_txt)
         status_txt.setText(R.string.id_not_detected_jp)
+        val ssid_btn = findViewById<Button>(R.id.ssid_btn)
+        ssid_btn.isEnabled = true
+        val ssid_spinner = findViewById<Spinner>(R.id.spinner_ssid)
+        ssid_spinner.isEnabled = true
     }
 
     private fun disconnected() {
@@ -425,11 +702,14 @@ class MainActivity : AppCompatActivity() {
         connect_btn.setText(R.string.connect)
         val status_txt = findViewById<Button>(R.id.status_txt) as TextView
         status_txt.setText(R.string.monitoring_stop_jp)
+        val ssid_btn = findViewById<Button>(R.id.ssid_btn)
+        ssid_btn.isEnabled = false
+        val ssid_spinner = findViewById<Spinner>(R.id.spinner_ssid)
+        ssid_spinner.isEnabled = false
     }
 
     private fun vibrate() {
-        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        vibrator.vibrate(1000)
+//        vibrator.vibrate(1000)
     }
 
     fun ByteArray.toHexString(): String {
