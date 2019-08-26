@@ -651,6 +651,11 @@ class MainActivity : AppCompatActivity() {
 
                 //判定時間確認
                 val curdate = Date(System.currentTimeMillis());
+                val calender = Calendar()
+
+                val day_of_week = {time=}(curdate).get(Calendar.DAY_OF_WEEK)
+
+
                 val formatter = SimpleDateFormat("H:mm", Locale.JAPAN)
                 val curtime = formatter.parse(formatter.format(curdate.time))
                 if (curtime != null && incStartTime != null && incEndTime != null) {
