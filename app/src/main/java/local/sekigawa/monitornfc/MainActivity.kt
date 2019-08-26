@@ -658,23 +658,17 @@ class MainActivity : AppCompatActivity() {
                         val ble = BLEFrame.ID_DETECTED !in ble_status
                         val ssid = BLEFrame.SSID_DETECTED !in ble_status
                         if (BLEFrame.ID_DETECTED !in ble_status && BLEFrame.SSID_DETECTED !in ble_status) {
-                            vibrator!!.vibrate(longArrayOf(500, 1000), 0)
+                            if (vibrator != null) {
+                                vibrator!!.vibrate(longArrayOf(500, 1000), 0)
+                            }
+                        } else {
+                            //キャンセル
+                            if (vibrator != null) {
+                                vibrator!!.cancel()
+                            }
                         }
-                        handler.post(Runnable {
-                            Toast.makeText(
-                                this@MainActivity,
-                                "監視時間内",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        })
                     } else {
-                        handler.post(Runnable {
-                            Toast.makeText(
-                                this@MainActivity,
-                                "監視時間外",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        })
+                        //キャンセル
                         if (vibrator != null) {
                             vibrator!!.cancel()
                         }
