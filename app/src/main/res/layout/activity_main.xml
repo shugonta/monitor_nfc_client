@@ -178,14 +178,15 @@
                         android:textAlignment="center" />
 
                     <TextView
-                        android:layout_width="50dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginLeft="10dp"
-                        android:layout_marginRight="10dp"
-                        android:layout_weight="1"
-                        android:text="@string/tilde"
-                        android:textAllCaps="true"
-                        android:textSize="18sp" />
+                            android:layout_width="70dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginLeft="0dp"
+                            android:layout_marginRight="00dp"
+                            android:layout_weight="1"
+                            android:text="@string/tilde"
+                            android:textAlignment="center"
+                            android:textAllCaps="true"
+                            android:textSize="18sp" />
 
                     <EditText
                         android:id="@+id/incdate_end_txt"
@@ -206,13 +207,13 @@
                 android:orientation="vertical">
 
                 <TextView
-                    android:id="@+id/textView4"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/include_time"
-                    android:textSize="18sp" />
+                        android:id="@+id/textView4"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp"
+                        android:layout_marginTop="10dp"
+                        android:text="@string/exclude_time"
+                        android:textSize="18sp" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -287,14 +288,15 @@
                         android:textAlignment="center" />
 
                     <TextView
-                        android:layout_width="50dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginLeft="10dp"
-                        android:layout_marginRight="10dp"
-                        android:layout_weight="2"
-                        android:text="@string/tilde"
-                        android:textAllCaps="true"
-                        android:textSize="18sp" />
+                            android:layout_width="70dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginLeft="0dp"
+                            android:layout_marginRight="0dp"
+                            android:layout_weight="2"
+                            android:text="@string/tilde"
+                            android:textAlignment="center"
+                            android:textAllCaps="true"
+                            android:textSize="18sp" />
 
                     <EditText
                         android:id="@+id/excdate_end_txt"
