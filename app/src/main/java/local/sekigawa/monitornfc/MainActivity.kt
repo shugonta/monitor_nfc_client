@@ -87,6 +87,7 @@ class MainActivity : AppCompatActivity() {
     private var timer: Timer? = null
     private var timer_cnt: Int = 0
     private var notify_alert: AlertDialog? = null
+    private var ble_status: BLEFrame? = null
 
     val handler = Handler()
 
@@ -135,6 +136,7 @@ class MainActivity : AppCompatActivity() {
                         val target_ssid = editText.text.toString()
                         SSID_LIST?.add(target_ssid)
                         spinner_adapter?.add(target_ssid)
+                        spinner_ssid.setSelection(spinner_ssid.count - 1)
                         if (mBleGattQueue != null) {
                             val pref = getSharedPreferences("monitor_nfc", Context.MODE_PRIVATE)
                             pref.edit().putString("ssid_list", Gson().toJson(SSID_LIST!!)).apply()
@@ -270,6 +272,7 @@ class MainActivity : AppCompatActivity() {
         settime_btn.setOnClickListener() {
             if (setTime())
                 settime_btn.isEnabled = false
+            statusCheck()
         }
 
         val textWatcher = object : TextWatcher {
@@ -632,7 +635,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic
@@ -643,139 +645,143 @@ class MainActivity : AppCompatActivity() {
             handler.post(Runnable {
                 val RecvByteValue = characteristic.value
 
-                val ble_status = BLEFrame(RecvByteValue[0].toInt())
+                ble_status = BLEFrame(RecvByteValue[0].toInt())
 
-                Toast.makeText(this@MainActivity, ble_status.toString(), Toast.LENGTH_SHORT)
+                Toast.makeText(this@MainActivity, ble_status!!.toString(), Toast.LENGTH_SHORT)
                     .show();
                 val status_txt = findViewById<Button>(R.id.status_txt) as TextView
-                if (BLEFrame.ID_DETECTED in ble_status) {
+                if (BLEFrame.ID_DETECTED in ble_status!!) {
                     status_txt.setText(R.string.id_detected_jp)
                 } else {
                     status_txt.setText(R.string.id_not_detected_jp)
                 }
 
                 val wifi_txt = findViewById<Button>(R.id.wifi_txt) as TextView
-                if (BLEFrame.SSID_DETECTED in ble_status) {
+                if (BLEFrame.SSID_DETECTED in ble_status!!) {
                     wifi_txt.setText(R.string.wifi_found)
                 } else {
                     wifi_txt.setText(R.string.wifi_not_found)
                 }
-
-                //判定時間確認
-                val curdate = Date(System.currentTimeMillis());
-                val calender = Calendar.getInstance(TimeZone.getTimeZone("Asia/Tokyo"))
-                calender.time = curdate
-                val day_of_week = calender.get(Calendar.DAY_OF_WEEK)
-
-                val formatter = SimpleDateFormat("H:mm", Locale.JAPAN)
-                val curtime = formatter.parse(formatter.format(curdate.time))
-                if (curtime != null && incStartTime != null && incEndTime != null) {
-
-                    val dayofweek_list =
-                        listOf<String>("sun", "mon", "tue", "wed", "thu", "fri", "sat")
-                    val dayofweek = dayofweek_list[day_of_week - 1]
-                    val inc_chklist_checked = inc_date_chklist!![dayofweek]!!.isChecked
-                    val exc_chklist_checked = exc_date_chklist!![dayofweek]!!.isChecked
-
-                    if (inc_chklist_checked && incStartTime!!.time <= curtime.time && incEndTime!!.time >= curtime.time) {
-                        if (BLEFrame.ID_DETECTED !in ble_status && BLEFrame.SSID_DETECTED !in ble_status) {
-                            notify_alert = AlertDialog.Builder(this@MainActivity)
-                                .setTitle("社員証が確認できません")
-                                .setPositiveButton("確認") { dialog, which ->
-                                    cancelNotify()
-                                }.show();
-
-                            if (vibrator != null) {
-                                vibrator!!.vibrate(longArrayOf(500, 1000), 0)
-                            }
-
-                            if (timer != null) {
-                                timer!!.cancel()
-                            }
-                            timer = Timer()
-                            timer!!.schedule(0, 1000) {
-                                val audio_attribute = AudioAttributes.Builder()
-                                    .setUsage(AudioAttributes.USAGE_ALARM)
-                                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                                    .build()
-
-                                if (timer_cnt == 10) {
-                                    if (player != null) {
-                                        player!!.reset()
-                                        player!!.setAudioAttributes(audio_attribute); // アラームのボリュームで再生
-                                        player!!.setLooping(true);                              // ループ再生を設定
-                                        val uri =
-                                            Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.jishin);
-                                        player!!.setDataSource(
-                                            applicationContext,
-                                            uri
-                                        )                   // 音声を設定
-                                        player!!.prepare(); // 音声を読み込み
-                                        player!!.start(); // 再生
-                                    }
-                                } else if (timer_cnt == 20) {
-                                    if (player != null) {
-                                        player!!.reset()
-                                        player!!.setAudioAttributes(audio_attribute); // アラームのボリュームで再生
-                                        player!!.setLooping(true);                              // ループ再生を設定
-                                        val uri =
-                                            Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.siren);
-                                        player!!.setDataSource(
-                                            applicationContext,
-                                            uri
-                                        )                   // 音声を設定
-                                        player!!.prepare(); // 音声を読み込み
-                                        player!!.start(); // 再生
-                                    }
-                                }
-
-                                timer_cnt++
-                            }
-
-                        } else {
-                            //キャンセル
-                            cancelNotify()
-                        }
-                    } else if (exc_chklist_checked && excStartTime!!.time <= curtime.time && excEndTime!!.time >= curtime.time) {
-                        if (BLEFrame.ID_DETECTED in ble_status && BLEFrame.SSID_DETECTED !in ble_status) {
-                            notify_alert = AlertDialog.Builder(this@MainActivity)
-                                .setTitle("社員証を持ち出していませんか")
-                                .setPositiveButton("確認") { dialog, which ->
-                                    cancelNotify()
-                                }.show();
-
-                            if (vibrator != null) {
-                                vibrator!!.vibrate(longArrayOf(500, 1000), 0)
-                            }
-                        } else {
-                            //キャンセル
-                            cancelNotify()
-                        }
-                    } else {
-                        //キャンセル
-                        cancelNotify()
-                    }
-                }
+                statusCheck()
             })
         }
+    }
 
-        fun cancelNotify() {
-            if (vibrator != null) {
-                vibrator!!.cancel()
-            }
-            if (player != null && player!!.isPlaying) {
-                player!!.stop()
-                player!!.prepare()
-            }
-            if (timer != null)
-                timer!!.cancel()
-            timer_cnt = 0
+    private fun cancelNotify() {
+        if (vibrator != null) {
+            vibrator!!.cancel()
+        }
+        if (player != null && player!!.isPlaying) {
+            player!!.stop()
+            player!!.prepare()
+        }
+        if (timer != null)
+            timer!!.cancel()
+        timer_cnt = 0
 
-            if (notify_alert != null) {
-                notify_alert!!.dismiss()
+        if (notify_alert != null) {
+            notify_alert!!.dismiss()
+        }
+    }
+
+    private fun statusCheck() {
+        //判定時間確認
+        val curdate = Date(System.currentTimeMillis());
+        val calender = Calendar.getInstance(TimeZone.getTimeZone("Asia/Tokyo"))
+        calender.time = curdate
+        val day_of_week = calender.get(Calendar.DAY_OF_WEEK)
+
+        val formatter = SimpleDateFormat("H:mm", Locale.JAPAN)
+        val curtime = formatter.parse(formatter.format(curdate.time))
+        if (curtime != null && incStartTime != null && incEndTime != null) {
+
+            val dayofweek_list =
+                listOf<String>("sun", "mon", "tue", "wed", "thu", "fri", "sat")
+            val dayofweek = dayofweek_list[day_of_week - 1]
+            val inc_chklist_checked = inc_date_chklist!![dayofweek]!!.isChecked
+            val exc_chklist_checked = exc_date_chklist!![dayofweek]!!.isChecked
+
+            if (inc_chklist_checked && incStartTime!!.time <= curtime.time && incEndTime!!.time >= curtime.time) {
+                if (BLEFrame.ID_DETECTED !in ble_status!! && BLEFrame.SSID_DETECTED !in ble_status!!) {
+                    notify_alert = AlertDialog.Builder(this@MainActivity)
+                        .setTitle("社員証が確認できません")
+                        .setPositiveButton("確認") { dialog, which ->
+                            cancelNotify()
+                        }.show();
+
+                    if (vibrator != null) {
+                        vibrator!!.vibrate(longArrayOf(500, 1000), 0)
+                    }
+
+                    if (timer != null) {
+                        timer!!.cancel()
+                    }
+                    timer = Timer()
+                    timer!!.schedule(0, 1000) {
+                        val audio_attribute = AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ALARM)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build()
+
+                        if (timer_cnt == 10) {
+                            if (player != null) {
+                                player!!.reset()
+                                player!!.setAudioAttributes(audio_attribute); // アラームのボリュームで再生
+                                player!!.setLooping(true);                              // ループ再生を設定
+                                val uri =
+                                    Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.jishin);
+                                player!!.setDataSource(
+                                    applicationContext,
+                                    uri
+                                )                   // 音声を設定
+                                player!!.prepare(); // 音声を読み込み
+                                player!!.start(); // 再生
+                            }
+                        } else if (timer_cnt == 20) {
+                            if (player != null) {
+                                player!!.reset()
+                                player!!.setAudioAttributes(audio_attribute); // アラームのボリュームで再生
+                                player!!.setLooping(true);                              // ループ再生を設定
+                                val uri =
+                                    Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.siren);
+                                player!!.setDataSource(
+                                    applicationContext,
+                                    uri
+                                )                   // 音声を設定
+                                player!!.prepare(); // 音声を読み込み
+                                player!!.start(); // 再生
+                            }
+                        }
+
+                        timer_cnt++
+                    }
+
+                } else {
+                    //キャンセル
+                    cancelNotify()
+                }
+            } else if (exc_chklist_checked && excStartTime!!.time <= curtime.time && excEndTime!!.time >= curtime.time) {
+                if (BLEFrame.ID_DETECTED in ble_status!! && BLEFrame.SSID_DETECTED !in ble_status!!) {
+                    notify_alert = AlertDialog.Builder(this@MainActivity)
+                        .setTitle("社員証を持ち出していませんか")
+                        .setPositiveButton("確認") { dialog, which ->
+                            cancelNotify()
+                        }.show();
+
+                    if (vibrator != null) {
+                        vibrator!!.vibrate(longArrayOf(500, 1000), 0)
+                    }
+                } else {
+                    //キャンセル
+                    cancelNotify()
+                }
+            } else {
+                //キャンセル
+                cancelNotify()
             }
         }
     }
+
 
     private fun connected() {
         val connect_btn = findViewById<Button>(R.id.connect_btn)
@@ -790,19 +796,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun disconnected() {
-        val connect_btn = findViewById<Button>(R.id.connect_btn) as Button
+        val connect_btn = findViewById<Button>(R.id.connect_btn)
         connect_btn.isEnabled = true
         connect_btn.setText(R.string.connect)
-        val status_txt = findViewById<Button>(R.id.status_txt) as TextView
+        val status_txt = findViewById<TextView>(R.id.status_txt)
         status_txt.setText(R.string.monitoring_stop_jp)
         val ssid_btn = findViewById<Button>(R.id.ssid_btn)
         ssid_btn.isEnabled = false
         val ssid_spinner = findViewById<Spinner>(R.id.spinner_ssid)
         ssid_spinner.isEnabled = false
-    }
-
-    private fun vibrate() {
-//        vibrator.vibrate(1000)
     }
 
     fun ByteArray.toHexString(): String {
